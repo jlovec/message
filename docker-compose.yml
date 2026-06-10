@@ -1,0 +1,35 @@
+services:
+  smsforwarder-webhook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GO_IMAGE: ${GO_IMAGE:-golang:1.23-bookworm}
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        GOSUMDB: ${GOSUMDB:-off}
+    image: smsforwarder-webhook:local
+    container_name: smsforwarder-webhook
+    env_file:
+      - .env
+    environment:
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${CONTAINER_PORT:-8080}
+      DATABASE_HOST: ${DATABASE_HOST:-postgresql}
+      DATABASE_PORT: ${DATABASE_PORT:-5432}
+      DATABASE_NAME: ${DATABASE_NAME:-smsforwarder_messages}
+      DATABASE_USER: ${DATABASE_USER:-smsforwarder_webhook}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:-disable}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-10s}
+      READ_HEADER_TIMEOUT: ${READ_HEADER_TIMEOUT:-5s}
+    ports:
+      - "${HOST_IP:-0.0.0.0}:${HOST_PORT:-18088}:${CONTAINER_PORT:-8080}"
+    restart: always
+    networks:
+      - 1panel-network
+    labels:
+      com.centurylinklabs.watchtower.enable: 'true'
+
+networks:
+  1panel-network:
+    external: true

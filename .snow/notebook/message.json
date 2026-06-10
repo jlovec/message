@@ -1,0 +1,43 @@
+{
+  "": [
+    {
+      "id": "notebook-1781062720530_h1g1uoz29",
+      "filePath": "",
+      "note": "Verification on 2026-06-10: gofmt/go test ./.../go build passed in golang:1.23-bookworm; docker compose config showed external 1panel-network and port 18088->8080; docker compose up built/started container; /healthz returned {\"status\":\"ok\"}; built-in mock inserted sms/wechat/feishu/qq rows.",
+      "createdAt": "2026-06-10T11:38:40.530",
+      "updatedAt": "2026-06-10T11:38:40.530"
+    },
+    {
+      "id": "notebook-1781062720530_mm8cp50yz",
+      "filePath": "",
+      "note": "Deployment is designed for 1Panel PostgreSQL: docker-compose.yml joins external 1panel-network, DATABASE_HOST defaults to postgresql, and runtime DB/user are smsforwarder_messages/smsforwarder_webhook with the generated password only in local .env.",
+      "createdAt": "2026-06-10T11:38:40.530",
+      "updatedAt": "2026-06-10T11:38:40.530"
+    },
+    {
+      "id": "notebook-1781062720530_3ax86vq96",
+      "filePath": "",
+      "note": "SmsForwarder webhook service uses POST /webhook/smsforwarder without auth by requirement; accepted source values are sms/wechat/feishu/qq and raw request JSON is preserved in PostgreSQL raw_payload JSONB.",
+      "createdAt": "2026-06-10T11:38:40.530",
+      "updatedAt": "2026-06-10T11:38:40.530"
+    }
+  ],
+  "docker-compose.yml": [
+    {
+      "id": "notebook-1781077744796_9m8asi90x",
+      "filePath": "docker-compose.yml",
+      "note": "message.jlovec.net 当前公网暴露方式：smsforwarder-webhook Docker 服务运行在当前机器 127.0.0.1:18088；infra.jlovec.net 的 1Panel website id=72 仅做 proxy，upstream 指向 infra 本机 http://127.0.0.1:18089，该端口来自 current->infra 的 SSH reverse tunnel（-R 127.0.0.1:18089:127.0.0.1:18088）。此 tunnel 目前是后台 ssh 进程，不是已验证的 systemd/autossh 持久服务；重启或 SSH 断线后需重新建立或做持久化。",
+      "createdAt": "2026-06-10T15:49:04.796",
+      "updatedAt": "2026-06-10T15:49:04.796"
+    }
+  ],
+  "internal/webhook/server.go": [
+    {
+      "id": "notebook-1781083463370_o72linxmz",
+      "filePath": "internal/webhook/server.go",
+      "note": "SmsForwarder webhook no longer requires incoming source. Source is inferred server-side from sender/from/appPackage/packageName/package-like hints and SMS metadata; legacy source is fallback only, so inference wins over stale phone-side source. Persisted content is normalized by priority body -> rawContent -> originalContent -> message -> content because real forwarded data showed content may contain metadata pollution while originalContent/body can hold the clean message body.",
+      "createdAt": "2026-06-10T17:24:23.370",
+      "updatedAt": "2026-06-10T17:24:23.370"
+    }
+  ]
+}

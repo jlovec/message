@@ -1,0 +1,13 @@
+.git
+.env
+.trellis
+.agents
+.codex
+.snow
+*.log
+bin/
+server
+smsforwarder-mock
+Dockerfile*
+docker-compose*.yml
+README.md
