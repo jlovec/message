@@ -1,6 +1,13 @@
 {
   "": [
     {
+      "id": "notebook-1781086919748_g3gp05th1",
+      "filePath": "",
+      "note": "2026-06-10 final delivery: repository initialized and pushed to public GitHub repo https://github.com/jlovec/message on main commit 5c271c6. Secret safety checks confirmed .env is ignored and not staged. Final verification used Docker golang:1.23-bookworm with git safe.directory: go test ./..., go build ./cmd/server, and go build ./cmd/smsforwarder-mock all passed; local and public health endpoints returned {\"status\":\"ok\"}. The deployed webhook had already been verified with no-source local SMS and public WeChat POSTs persisted with inferred source and clean content.",
+      "createdAt": "2026-06-10T18:21:59.748",
+      "updatedAt": "2026-06-10T18:21:59.748"
+    },
+    {
       "id": "notebook-1781062720530_h1g1uoz29",
       "filePath": "",
       "note": "Verification on 2026-06-10: gofmt/go test ./.../go build passed in golang:1.23-bookworm; docker compose config showed external 1panel-network and port 18088->8080; docker compose up built/started container; /healthz returned {\"status\":\"ok\"}; built-in mock inserted sms/wechat/feishu/qq rows.",
@@ -24,20 +31,63 @@
   ],
   "docker-compose.yml": [
     {
+      "id": "notebook-1781229841566_0z5pc9unz",
+      "filePath": "docker-compose.yml",
+      "note": "2026-06-12 部署方案已改为直连内网 IP：两台服务器网络互通，infra 上 message.jlovec.net 的 1Panel/OpenResty upstream 必须指向 http://192.168.2.230:18088。旧的 current->infra SSH reverse tunnel / 127.0.0.1:18089 方案已停用且不再是推荐恢复方式；公网 502 时优先检查 /root/www/sites/message.jlovec.net/proxy/root.conf 是否仍 proxy_pass 到 http://192.168.2.230:18088，以及 infra 是否能 curl 该 healthz。",
+      "createdAt": "2026-06-12T10:04:01.566",
+      "updatedAt": "2026-06-12T10:41:12.028"
+    },
+    {
       "id": "notebook-1781077744796_9m8asi90x",
       "filePath": "docker-compose.yml",
-      "note": "message.jlovec.net 当前公网暴露方式：smsforwarder-webhook Docker 服务运行在当前机器 127.0.0.1:18088；infra.jlovec.net 的 1Panel website id=72 仅做 proxy，upstream 指向 infra 本机 http://127.0.0.1:18089，该端口来自 current->infra 的 SSH reverse tunnel（-R 127.0.0.1:18089:127.0.0.1:18088）。此 tunnel 目前是后台 ssh 进程，不是已验证的 systemd/autossh 持久服务；重启或 SSH 断线后需重新建立或做持久化。",
+      "note": "message.jlovec.net 当前公网暴露方式：smsforwarder-webhook Docker 服务运行在当前机器 0.0.0.0:18088，infra.jlovec.net 的 1Panel/OpenResty 站点直接 proxy 到内网 upstream http://192.168.2.230:18088。不要再依赖 current->infra SSH reverse tunnel 或 infra 本机 127.0.0.1:18089；OpenResty 站点配置文件为 infra:/root/www/sites/message.jlovec.net/proxy/root.conf。",
       "createdAt": "2026-06-10T15:49:04.796",
-      "updatedAt": "2026-06-10T15:49:04.796"
+      "updatedAt": "2026-06-12T10:41:12.134"
     }
   ],
   "internal/webhook/server.go": [
     {
       "id": "notebook-1781083463370_o72linxmz",
       "filePath": "internal/webhook/server.go",
-      "note": "SmsForwarder webhook no longer requires incoming source. Source is inferred server-side from sender/from/appPackage/packageName/package-like hints and SMS metadata; legacy source is fallback only, so inference wins over stale phone-side source. Persisted content is normalized by priority body -> rawContent -> originalContent -> message -> content because real forwarded data showed content may contain metadata pollution while originalContent/body can hold the clean message body.",
+      "note": "SmsForwarder webhook no longer requires incoming source. Source is inferred server-side from sender/from package-like values and SMS metadata; legacy source remains fallback only, so inference wins over stale phone-side source. Typed checksum/package fields are no longer parsed or persisted as first-class fields. Persisted content priority remains body -> rawContent -> originalContent -> message -> content.",
       "createdAt": "2026-06-10T17:24:23.370",
-      "updatedAt": "2026-06-10T17:24:23.370"
+      "updatedAt": "2026-06-11T14:40:33.765"
+    }
+  ],
+  "README.md": [
+    {
+      "id": "notebook-1781142208881_y5bevu991",
+      "filePath": "README.md",
+      "note": "message.jlovec.net 的 1Panel/OpenResty upstream 已改为直接使用 http://192.168.2.230:18088；两台服务器网络互通时不应使用 ssh -R/127.0.0.1:18089 作为公网链路。若公网出现 OpenResty 502 且本地 127.0.0.1:18088 正常，优先检查 infra:/root/www/sites/message.jlovec.net/proxy/root.conf 的 proxy_pass、docker exec openresty nginx -t/reload，以及 infra 上 curl http://192.168.2.230:18088/healthz 是否可达。",
+      "createdAt": "2026-06-11T09:43:28.881",
+      "updatedAt": "2026-06-12T10:41:12.232"
+    }
+  ],
+  "internal/webhook/enrichment.go": [
+    {
+      "id": "notebook-1781147343249_usfl28nek",
+      "filePath": "internal/webhook/enrichment.go",
+      "note": "本项目当前产品方向：后端只保留稳定抽取字段 conversationTitle、cleanContent、processedAt；API 查询只保留 source/q/limit/offset；页面是只读的简洁消息查看。媒体/链接等内容特征保留在正文里，不再做独立抽取、统计或展示；如需新增字段必须先用真实 QQ/微信/飞书覆盖率验证。",
+      "createdAt": "2026-06-11T11:09:03.249",
+      "updatedAt": "2026-06-11T15:27:32.402"
+    }
+  ],
+  "internal/postgres/migrations/004_drop_unstable_message_fields.sql": [
+    {
+      "id": "notebook-1781164231295_re8wpkzin",
+      "filePath": "internal/postgres/migrations/004_drop_unstable_message_fields.sql",
+      "note": "004 迁移负责删除早期不稳定的一等字段及对应索引；运行迁移后 API、统计和页面都只暴露当前稳定抽取字段。",
+      "createdAt": "2026-06-11T15:50:31.295",
+      "updatedAt": "2026-06-11T15:50:31.295"
+    }
+  ],
+  "docs/smsforwarder-config.md": [
+    {
+      "id": "notebook-1781259147912_5ysvx93mb",
+      "filePath": "docs/smsforwarder-config.md",
+      "note": "2026-06-12 webhook 停收审计结论：服务端当前可接收并入库。证据：本地 POST http://127.0.0.1:18088/webhook/smsforwarder 返回 202 id=863，公网 POST https://message.jlovec.net/webhook/smsforwarder 返回 202 id=864，PostgreSQL marker 查到两行，应用日志有 message stored id=863/864。OpenResty /root/www/sites/message.jlovec.net/log/access.log 共 169 条 /webhook/smsforwarder 且状态全 202；最后真实 Android UA 请求是 2026-06-11 17:53:26 +0800；2026-06-11 17:54 +0800 后仅 1 条 curl 手工测试，Android UA 为 0。因此这次“好久没收到”的根因边界是手机/SmsForwarder 上游未再发请求到公网 endpoint，而不是当前 Go webhook、PostgreSQL 写入或 OpenResty 直连 192.168.2.230:18088 反代故障。排查同类问题时先看 SmsForwarder app 规则/权限/后台保活/电池限制/网络/发送历史。",
+      "createdAt": "2026-06-12T18:12:27.912",
+      "updatedAt": "2026-06-12T18:12:27.912"
     }
   ]
 }

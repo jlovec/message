@@ -28,6 +28,10 @@ func NewStore(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, err
 	}
+	if _, err := store.BackfillMessageEnrichment(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
 
 	return store, nil
 }
@@ -41,6 +45,8 @@ func (s *Store) Ping(ctx context.Context) error {
 }
 
 func (s *Store) SaveMessage(ctx context.Context, msg webhook.Message) (int64, error) {
+	webhook.EnrichMessage(&msg)
+
 	const query = `
 INSERT INTO smsforwarder_messages (
     source,
@@ -52,14 +58,15 @@ INSERT INTO smsforwarder_messages (
     device,
     receive_time,
     forwarder_timestamp_millis,
-    sign,
-    app_package,
     card_slot,
     app_version,
-    raw_payload
+    raw_payload,
+    conversation_title,
+    clean_content,
+    processed_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7,
-    $8, $9, $10, $11, $12, $13, $14
+    $1, $2, $3, $4, $5, $6, $7, $8,
+    $9, $10, $11, $12, $13, $14, now()
 )
 RETURNING id`
 
@@ -74,11 +81,11 @@ RETURNING id`
 		msg.Device,
 		msg.ReceiveTime,
 		msg.ForwarderTimestamp,
-		msg.Sign,
-		msg.AppPackage,
 		msg.CardSlot,
 		msg.AppVersion,
 		string(msg.RawPayload),
+		msg.ConversationTitle,
+		msg.CleanContent,
 	).Scan(&id); err != nil {
 		return 0, fmt.Errorf("insert smsforwarder message: %w", err)
 	}

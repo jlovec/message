@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const sourceInferenceError = "message source could not be inferred; set sender/from to [from] or appPackage to a supported package"
+const sourceInferenceError = "message source could not be inferred; set sender/from to [from] with a supported sender or package value"
 
 var allowedSources = map[string]struct{}{
 	"sms":    {},
@@ -31,15 +31,18 @@ type Message struct {
 	Device             string          `json:"device,omitempty"`
 	ReceiveTime        string          `json:"receiveTime,omitempty"`
 	ForwarderTimestamp *int64          `json:"timestamp,omitempty"`
-	Sign               string          `json:"sign,omitempty"`
-	AppPackage         string          `json:"appPackage,omitempty"`
 	CardSlot           string          `json:"cardSlot,omitempty"`
 	AppVersion         string          `json:"appVersion,omitempty"`
-	RawPayload         json.RawMessage `json:"rawPayload"`
+	RawPayload         json.RawMessage `json:"rawPayload,omitempty"`
+	ConversationTitle  string          `json:"conversationTitle,omitempty"`
+	CleanContent       string          `json:"cleanContent,omitempty"`
+	CreatedAt          string          `json:"createdAt,omitempty"`
+	ProcessedAt        string          `json:"processedAt,omitempty"`
 }
-
 type Store interface {
 	SaveMessage(context.Context, Message) (int64, error)
+	ListMessages(context.Context, MessageQuery) ([]Message, error)
+	MessageStats(context.Context, MessageQuery) (MessageStats, error)
 	Ping(context.Context) error
 }
 
@@ -50,8 +53,8 @@ type Server struct {
 
 type incomingPayload struct {
 	// Source is accepted only for backward compatibility. New SmsForwarder
-	// templates should omit it; the service infers source from sender/from or
-	// appPackage so phone-side rules do not need per-source JSON bodies.
+	// templates should omit it; the service infers source from sender/from so
+	// phone-side rules do not need per-source JSON bodies.
 	Source string `json:"source"`
 
 	Sender          string         `json:"sender"`
@@ -69,9 +72,6 @@ type incomingPayload struct {
 	ReceiveTime     string         `json:"receiveTime"`
 	Time            string         `json:"time"`
 	Timestamp       string         `json:"timestamp"`
-	Sign            string         `json:"sign"`
-	AppPackage      string         `json:"appPackage"`
-	PackageName     string         `json:"packageName"`
 	CardSlot        string         `json:"cardSlot"`
 	AppVersion      string         `json:"appVersion"`
 	Extra           map[string]any `json:"extra,omitempty"`
@@ -87,7 +87,11 @@ func NewServer(store Store, logger *slog.Logger) *Server {
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/messages", s.handleMessagesPage)
+	mux.HandleFunc("/api/messages", s.handleMessagesAPI)
+	mux.HandleFunc("/api/messages/stats", s.handleMessageStatsAPI)
 	mux.HandleFunc("/webhook/smsforwarder", s.handleSmsForwarder)
 	return mux
 }
@@ -159,21 +163,13 @@ func normalizePayload(payload incomingPayload, rawPayload []byte) (Message, erro
 	}
 
 	sender := firstNonEmpty(payload.Sender, payload.From)
-	appPackage := firstNonEmpty(payload.AppPackage, payload.PackageName)
 	title := strings.TrimSpace(payload.Title)
-	source := normalizeSource(payload, sender, appPackage, title, content)
+	source := normalizeSource(payload, sender, title, content)
 	if source == "" {
 		return Message{}, errors.New(sourceInferenceError)
 	}
 	if _, ok := allowedSources[source]; !ok {
 		return Message{}, errors.New(sourceInferenceError)
-	}
-
-	if source != "sms" && appPackage == "" && looksLikeAndroidPackage(sender) {
-		appPackage = sender
-	}
-	if source == "sms" && looksLikeSMSSender(appPackage) {
-		appPackage = ""
 	}
 
 	forwarderTimestamp, err := parseTimestamp(payload.Timestamp)
@@ -183,7 +179,7 @@ func normalizePayload(payload incomingPayload, rawPayload []byte) (Message, erro
 
 	senderName := firstNonEmpty(payload.SenderName, payload.Name, title)
 
-	return Message{
+	msg := Message{
 		Source:             source,
 		Sender:             strings.TrimSpace(sender),
 		SenderName:         senderName,
@@ -193,12 +189,12 @@ func normalizePayload(payload incomingPayload, rawPayload []byte) (Message, erro
 		Device:             firstNonEmpty(payload.Device, payload.DeviceMark),
 		ReceiveTime:        firstNonEmpty(payload.ReceiveTime, payload.Time),
 		ForwarderTimestamp: forwarderTimestamp,
-		Sign:               strings.TrimSpace(payload.Sign),
-		AppPackage:         strings.TrimSpace(appPackage),
 		CardSlot:           strings.TrimSpace(payload.CardSlot),
 		AppVersion:         strings.TrimSpace(payload.AppVersion),
 		RawPayload:         append(json.RawMessage(nil), rawPayload...),
-	}, nil
+	}
+	EnrichMessage(&msg)
+	return msg, nil
 }
 
 func normalizeContent(payload incomingPayload) (string, string, error) {
@@ -224,8 +220,8 @@ func normalizeContent(payload incomingPayload) (string, string, error) {
 	}
 }
 
-func normalizeSource(payload incomingPayload, sender, appPackage, title, content string) string {
-	if inferred := inferSource(sender, appPackage, title, content); inferred != "" {
+func normalizeSource(payload incomingPayload, sender, title, content string) string {
+	if inferred := inferSource(sender, title, content); inferred != "" {
 		return inferred
 	}
 
@@ -234,15 +230,15 @@ func normalizeSource(payload incomingPayload, sender, appPackage, title, content
 	return strings.ToLower(strings.TrimSpace(payload.Source))
 }
 
-func inferSource(sender, appPackage, title, content string) string {
-	packageHints := strings.ToLower(strings.Join([]string{appPackage, sender}, " "))
+func inferSource(sender, title, content string) string {
+	packageHint := strings.ToLower(strings.TrimSpace(sender))
 
 	switch {
-	case strings.Contains(packageHints, "com.tencent.mm"):
+	case strings.Contains(packageHint, "com.tencent.mm"):
 		return "wechat"
-	case strings.Contains(packageHints, "lark") || strings.Contains(packageHints, "feishu"):
+	case strings.Contains(packageHint, "lark") || strings.Contains(packageHint, "feishu"):
 		return "feishu"
-	case strings.Contains(packageHints, "com.tencent.mobileqq") || strings.Contains(packageHints, "mobileqq"):
+	case strings.Contains(packageHint, "com.tencent.mobileqq") || strings.Contains(packageHint, "mobileqq"):
 		return "qq"
 	case looksLikeSMSSender(sender) || looksLikeSMSMetadata(title, content):
 		return "sms"

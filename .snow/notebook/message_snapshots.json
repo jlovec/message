@@ -24,5 +24,70 @@
       "op": "add",
       "notebookId": "notebook-1781083463370_o72linxmz"
     }
+  ],
+  "6530c67f-42f0-4022-9df8-59c3d49dfa4c:0": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1781086919748_g3gp05th1"
+    }
+  ],
+  "e83f406c-27b9-4aec-8c36-83a53dae22f7:0": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1781142208881_y5bevu991"
+    }
+  ],
+  "e984bc63-c40b-454e-8197-14022983d482:0": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1781147343249_usfl28nek"
+    }
+  ],
+  "e7ddfe64-e4dd-48dc-8675-cedf84419585:0": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1781083463370_o72linxmz",
+      "previousNote": "SmsForwarder webhook no longer requires incoming source. Source is inferred server-side from sender/from package-like values and SMS metadata; legacy source remains fallback only, so inference wins over stale phone-side source. Typed checksum/package fields are no longer parsed or persisted as first-class fields. Persisted content priority remains body -> rawContent -> originalContent -> message -> content."
+    }
+  ],
+  "a23de94c-793e-477c-9a16-43bfe42ca28d:0": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1781147343249_usfl28nek",
+      "previousNote": "本项目当前产品方向已明确删除建议分类、优先级、阅读状态及相关写操作；后端只做稳定字段抽取：conversationTitle、cleanContent、processedAt。API 查询只保留 source/q/limit/offset，页面是简洁消息查看；如以后看到 suggested*/readStatus/read-status/ai_tools 等只应出现在删除迁移或防回归测试中。"
+    },
+    {
+      "op": "add",
+      "notebookId": "notebook-1781164231295_re8wpkzin"
+    }
+  ],
+  "23107346-ece8-4dd6-bd50-7f3abf2ab528:0": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1781229841566_0z5pc9unz"
+    }
+  ],
+  "a39cf836-c748-4e03-b71d-c0dc619b527d:0": [
+    {
+      "op": "update",
+      "notebookId": "notebook-1781229841566_0z5pc9unz",
+      "previousNote": "2026-06-12 复验时公网 https://message.jlovec.net/healthz 再次出现 OpenResty 502；根因仍是 current->infra reverse tunnel 缺失，infra 127.0.0.1:18089 无监听。本地服务 127.0.0.1:18088 与 PostgreSQL 均正常。恢复命令：ssh -f -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -R 127.0.0.1:18089:127.0.0.1:18088 infra。恢复后 infra /healthz 与公网 /healthz、/api/messages/stats 均正常。该 tunnel 仍非持久化服务，断线会再次导致公网 502。"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1781077744796_9m8asi90x",
+      "previousNote": "message.jlovec.net 当前公网暴露方式：smsforwarder-webhook Docker 服务运行在当前机器 127.0.0.1:18088；infra.jlovec.net 的 1Panel website id=72 仅做 proxy，upstream 指向 infra 本机 http://127.0.0.1:18089，该端口来自 current->infra 的 SSH reverse tunnel（-R 127.0.0.1:18089:127.0.0.1:18088）。此 tunnel 目前是后台 ssh 进程，不是已验证的 systemd/autossh 持久服务；重启或 SSH 断线后需重新建立或做持久化。"
+    },
+    {
+      "op": "update",
+      "notebookId": "notebook-1781142208881_y5bevu991",
+      "previousNote": "message.jlovec.net 的 1Panel/OpenResty upstream 依赖 infra 机器本机 127.0.0.1:18089，而该端口由当前机器启动的反向 SSH 隧道提供：ssh -R 127.0.0.1:18089:127.0.0.1:18088 root@infra.jlovec.net。若公网出现 OpenResty 502 且本地 127.0.0.1:18088 正常，优先检查当前机器是否还有 ssh -R/18089 进程，以及 infra 本机 curl http://127.0.0.1:18089/healthz 是否可达；本次故障根因就是反向隧道缺失。"
+    }
+  ],
+  "80194483-3824-42a3-b1a3-583e3f02066a:0": [
+    {
+      "op": "add",
+      "notebookId": "notebook-1781259147912_5ysvx93mb"
+    }
   ]
 }

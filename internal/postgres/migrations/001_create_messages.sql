@@ -9,8 +9,6 @@ CREATE TABLE IF NOT EXISTS smsforwarder_messages (
     device TEXT NOT NULL DEFAULT '',
     receive_time TEXT NOT NULL DEFAULT '',
     forwarder_timestamp_millis BIGINT,
-    sign TEXT NOT NULL DEFAULT '',
-    app_package TEXT NOT NULL DEFAULT '',
     card_slot TEXT NOT NULL DEFAULT '',
     app_version TEXT NOT NULL DEFAULT '',
     raw_payload JSONB NOT NULL,

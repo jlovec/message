@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -21,12 +22,66 @@ type recordingStore struct {
 }
 
 func (s *recordingStore) SaveMessage(_ context.Context, msg webhook.Message) (int64, error) {
+	webhook.EnrichMessage(&msg)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	msg.ID = int64(len(s.messages) + 1)
 	s.messages = append(s.messages, msg)
 	return msg.ID, nil
+}
+
+func (s *recordingStore) ListMessages(_ context.Context, query webhook.MessageQuery) ([]webhook.Message, error) {
+	query = webhook.NormalizeMessageQuery(query)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	filtered := make([]webhook.Message, 0, len(s.messages))
+	for _, msg := range s.messages {
+		if query.Source != "" && msg.Source != query.Source {
+			continue
+		}
+		if query.Search != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				msg.ConversationTitle,
+				msg.CleanContent,
+				msg.Title,
+				msg.SenderName,
+			}, " "))
+			if !strings.Contains(haystack, strings.ToLower(query.Search)) {
+				continue
+			}
+		}
+		filtered = append(filtered, msg)
+	}
+
+	if query.Offset >= len(filtered) {
+		return []webhook.Message{}, nil
+	}
+	end := query.Offset + query.Limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	out := make([]webhook.Message, end-query.Offset)
+	copy(out, filtered[query.Offset:end])
+	return out, nil
+}
+
+func (s *recordingStore) MessageStats(ctx context.Context, query webhook.MessageQuery) (webhook.MessageStats, error) {
+	messages, err := s.ListMessages(ctx, query)
+	if err != nil {
+		return webhook.MessageStats{}, err
+	}
+
+	stats := webhook.MessageStats{Total: int64(len(messages))}
+	sourceCounts := make(map[string]int64)
+	for _, msg := range messages {
+		sourceCounts[msg.Source]++
+	}
+	stats.BySource = messageCounts(sourceCounts)
+	return stats, nil
 }
 
 func (s *recordingStore) Ping(_ context.Context) error {
@@ -40,6 +95,52 @@ func (s *recordingStore) all() []webhook.Message {
 	out := make([]webhook.Message, len(s.messages))
 	copy(out, s.messages)
 	return out
+}
+
+func messageCounts(values map[string]int64) []webhook.MessageCount {
+	counts := make([]webhook.MessageCount, 0, len(values))
+	for name, count := range values {
+		counts = append(counts, webhook.MessageCount{Name: name, Count: count})
+	}
+	return counts
+}
+
+func hasCount(counts []webhook.MessageCount, name string, want int64) bool {
+	for _, count := range counts {
+		if count.Name == name && count.Count == want {
+			return true
+		}
+	}
+	return false
+}
+
+func assertForbiddenAbsent(t *testing.T, body string) {
+	t.Helper()
+	for _, forbidden := range []string{
+		"suggestedCategory",
+		"suggestedPriority",
+		"suggestedAction",
+		"suggestedTags",
+		"readStatus",
+		"read-status",
+		"ai_tools",
+		"标为已读",
+		"标为未读",
+		"归档",
+		"建议分类",
+		"最低优先级",
+		"阅读状态",
+		"conversationKind",
+		"messageAuthor",
+		"byConversationKind",
+		"appPackage",
+		"sign",
+		"system",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("body contains forbidden feature marker %q:\n%s", forbidden, body)
+		}
+	}
 }
 
 func TestServerInfersSourcesWithoutSourceField(t *testing.T) {
@@ -70,7 +171,6 @@ func TestServerInfersSourcesWithoutSourceField(t *testing.T) {
 			"device":          "OnePlus",
 			"receiveTime":     "2026-06-10 10:00:00",
 			"timestamp":       "1781056800000",
-			"appPackage":      "",
 			"cardSlot":        sample.title,
 			"appVersion":      "3.5.0.260224",
 		}
@@ -211,4 +311,133 @@ func TestServerHealthz(t *testing.T) {
 	if got := rr.Header().Get("Content-Type"); got != "application/json" {
 		t.Fatalf("expected JSON content type, got %q", got)
 	}
+}
+
+func TestServerMessagesAPIAndStatsExposeExtractedFieldsOnly(t *testing.T) {
+	store := &recordingStore{}
+	mustSaveMessage(t, store, webhook.Message{
+		Source:  "qq",
+		Sender:  "com.tencent.mobileqq",
+		Title:   "AI 交流群(2条新消息)",
+		Content: "小明：Claude API 额度还有吗？",
+	})
+	mustSaveMessage(t, store, webhook.Message{
+		Source:  "qq",
+		Sender:  "com.tencent.mobileqq",
+		Title:   "闲聊群",
+		Content: "张三：早上好",
+	})
+	mustSaveMessage(t, store, webhook.Message{
+		Source:  "wechat",
+		Sender:  "com.tencent.mm",
+		Title:   "微信好友",
+		Content: "微信通知",
+	})
+
+	server := webhook.NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler := server.Routes()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages?source=qq&category=ai_tools&priority=4&status=unread&q=Claude", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected messages API status %d, got %d with body %s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+	assertForbiddenAbsent(t, rr.Body.String())
+
+	var listResponse struct {
+		Query    webhook.MessageQuery `json:"query"`
+		Messages []webhook.Message    `json:"messages"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&listResponse); err != nil {
+		t.Fatalf("decode messages API response: %v", err)
+	}
+	if len(listResponse.Messages) != 1 {
+		t.Fatalf("expected 1 filtered message, got %d: %#v", len(listResponse.Messages), listResponse.Messages)
+	}
+	msg := listResponse.Messages[0]
+	if msg.ConversationTitle != "AI 交流群" || msg.CleanContent != "Claude API 额度还有吗？" {
+		t.Fatalf("unexpected extracted API message: %#v", msg)
+	}
+	if listResponse.Query.Source != "qq" || listResponse.Query.Search != "Claude" {
+		t.Fatalf("unexpected normalized query: %#v", listResponse.Query)
+	}
+
+	statsReq := httptest.NewRequest(http.MethodGet, "/api/messages/stats?source=qq", nil)
+	statsRR := httptest.NewRecorder()
+	handler.ServeHTTP(statsRR, statsReq)
+	if statsRR.Code != http.StatusOK {
+		t.Fatalf("expected stats API status %d, got %d with body %s", http.StatusOK, statsRR.Code, statsRR.Body.String())
+	}
+	assertForbiddenAbsent(t, statsRR.Body.String())
+	var stats webhook.MessageStats
+	if err := json.NewDecoder(statsRR.Body).Decode(&stats); err != nil {
+		t.Fatalf("decode stats API response: %v", err)
+	}
+	if stats.Total != 2 {
+		t.Fatalf("stats total = %d, want 2", stats.Total)
+	}
+	if !hasCount(stats.BySource, "qq", 2) {
+		t.Fatalf("unexpected stats: %#v", stats)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodPost, "/api/messages/1/read-status", strings.NewReader(`{"readStatus":"read"}`))
+	statusReq.Header.Set("Content-Type", "application/json")
+	statusRR := httptest.NewRecorder()
+	handler.ServeHTTP(statusRR, statusReq)
+	if statusRR.Code != http.StatusNotFound {
+		t.Fatalf("read-status API should be removed, got status %d with body %s", statusRR.Code, statusRR.Body.String())
+	}
+}
+
+func TestServerMessagesPageRendersSimpleExtractedFieldUI(t *testing.T) {
+	store := &recordingStore{}
+	mustSaveMessage(t, store, webhook.Message{
+		Source:  "qq",
+		Sender:  "com.tencent.mobileqq",
+		Title:   "AI 交流群(2条新消息)",
+		Content: "小明：Claude API 额度还有吗？",
+	})
+
+	server := webhook.NewServer(store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/messages?source=qq&category=ai_tools&priority=4&status=unread&q=Claude+API", nil)
+	server.Routes().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected messages page status %d, got %d with body %s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.Contains(got, "text/html") {
+		t.Fatalf("expected HTML content type, got %q", got)
+	}
+	body := rr.Body.String()
+	assertForbiddenAbsent(t, body)
+	for _, want := range []string{
+		"消息列表",
+		"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css",
+		"AI 交流群",
+		"Claude API 额度还有吗？",
+		"会话：AI 交流群",
+		"/api/messages?q=Claude&#43;API&amp;source=qq",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("messages page body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func mustSaveMessage(t *testing.T, store *recordingStore, msg webhook.Message) webhook.Message {
+	t.Helper()
+	id, err := store.SaveMessage(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	messages := store.all()
+	for _, saved := range messages {
+		if saved.ID == id {
+			return saved
+		}
+	}
+	t.Fatalf("saved message id %d not found", id)
+	return webhook.Message{}
 }

@@ -23,8 +23,6 @@ type Payload struct {
 	Device          string         `json:"device"`
 	ReceiveTime     string         `json:"receiveTime"`
 	Timestamp       string         `json:"timestamp"`
-	Sign            string         `json:"sign"`
-	AppPackage      string         `json:"appPackage"`
 	CardSlot        string         `json:"cardSlot"`
 	AppVersion      string         `json:"appVersion"`
 	Extra           map[string]any `json:"extra,omitempty"`
@@ -52,7 +50,6 @@ func Samples(device string) []Payload {
 			Device:          device,
 			ReceiveTime:     receiveTime,
 			Timestamp:       timestamp,
-			AppPackage:      "",
 			CardSlot:        "SIM1",
 			AppVersion:      "3.5.0.260224",
 			Extra:           map[string]any{"mock": true, "channel": "sms"},
@@ -68,7 +65,6 @@ func Samples(device string) []Payload {
 			Device:          device,
 			ReceiveTime:     receiveTime,
 			Timestamp:       timestamp,
-			AppPackage:      "",
 			CardSlot:        "微信好友",
 			AppVersion:      "3.5.0.260224",
 			Extra:           map[string]any{"mock": true, "channel": "wechat"},
@@ -84,7 +80,6 @@ func Samples(device string) []Payload {
 			Device:          device,
 			ReceiveTime:     receiveTime,
 			Timestamp:       timestamp,
-			AppPackage:      "",
 			CardSlot:        "飞书项目群",
 			AppVersion:      "3.5.0.260224",
 			Extra:           map[string]any{"mock": true, "channel": "feishu"},
@@ -100,7 +95,6 @@ func Samples(device string) []Payload {
 			Device:          device,
 			ReceiveTime:     receiveTime,
 			Timestamp:       timestamp,
-			AppPackage:      "",
 			CardSlot:        "QQ好友",
 			AppVersion:      "3.5.0.260224",
 			Extra:           map[string]any{"mock": true, "channel": "qq"},

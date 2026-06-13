@@ -1,0 +1,255 @@
+{{define "messages.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>消息列表</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+    />
+    <style>
+      :root {
+        --pico-font-size: 100%;
+        --message-muted: #667085;
+        --message-border: #e4e7ec;
+        --message-soft: #f8fafc;
+      }
+      body {
+        background: linear-gradient(180deg, #f8fafc 0%, #ffffff 280px);
+      }
+      main.container {
+        padding-block: 1.5rem 3rem;
+      }
+      .hero {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: minmax(0, 1fr);
+        margin-bottom: 1rem;
+      }
+      .hero hgroup {
+        margin-bottom: 0;
+      }
+      .stats-grid {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        margin-block: 1rem;
+      }
+      .stat-card {
+        border: 1px solid var(--message-border);
+        border-radius: 0.9rem;
+        padding: 0.9rem 1rem;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow: 0 10px 28px rgba(16, 24, 40, 0.06);
+      }
+      .stat-card strong {
+        display: block;
+        font-size: 1.55rem;
+        line-height: 1.15;
+      }
+      .stat-card span {
+        color: var(--message-muted);
+        font-size: 0.88rem;
+      }
+      .filter-card {
+        border: 1px solid var(--message-border);
+        border-radius: 0.9rem;
+        padding: 1rem;
+        background: rgba(255, 255, 255, 0.9);
+      }
+      .filter-grid {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+        align-items: end;
+      }
+      .filter-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .message-list {
+        display: grid;
+        gap: 0.85rem;
+        margin-top: 1rem;
+      }
+      .message-card {
+        border: 1px solid var(--message-border);
+        border-radius: 1rem;
+        padding: 1rem;
+        background: #ffffff;
+        box-shadow: 0 12px 30px rgba(16, 24, 40, 0.055);
+      }
+      .message-card header {
+        display: flex;
+        gap: 0.8rem;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+      }
+      .message-title {
+        margin: 0;
+      }
+      .meta-row,
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+      }
+      .meta-row {
+        color: var(--message-muted);
+        font-size: 0.88rem;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 0.14rem 0.55rem;
+        border: 1px solid var(--message-border);
+        background: var(--message-soft);
+        color: #344054;
+        font-size: 0.78rem;
+        line-height: 1.6;
+        white-space: nowrap;
+      }
+      .badge.primary {
+        border-color: #b2ddff;
+        background: #eff8ff;
+        color: #175cd3;
+      }
+      .content-box {
+        margin: 0.75rem 0;
+        padding: 0.8rem 0.9rem;
+        border-radius: 0.75rem;
+        background: var(--message-soft);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .field-grid {
+        display: grid;
+        gap: 0.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        border-top: 1px dashed var(--message-border);
+        color: var(--message-muted);
+        font-size: 0.88rem;
+      }
+      .empty-state {
+        margin-top: 1rem;
+        padding: 2rem;
+        text-align: center;
+        border: 1px dashed var(--message-border);
+        border-radius: 1rem;
+        background: var(--message-soft);
+      }
+      @media (min-width: 900px) {
+        .hero {
+          grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr);
+          align-items: center;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <hgroup>
+          <h1>消息列表</h1>
+          <p>
+            展示 QQ / 微信 / 飞书 /
+            短信消息，以及后端从真实转发数据中抽取出的会话标题和清洗正文。
+          </p>
+        </hgroup>
+        <article class="stat-card">
+          <strong>{{.Stats.Total}}</strong>
+          <span>当前筛选消息数</span>
+        </article>
+      </section>
+
+      <section class="stats-grid" aria-label="消息统计">
+        <article class="stat-card">
+          <strong>{{.Stats.Total}}</strong><span>总消息</span>
+        </article>
+        <article class="stat-card">
+          <strong>{{len .Stats.BySource}}</strong><span>来源数</span>
+        </article>
+      </section>
+
+      <section class="filter-card" aria-label="筛选消息">
+        <form method="get" action="/messages">
+          <div class="filter-grid">
+            <label
+              >来源
+              <select name="source">
+                {{range .Sources}}
+                <option value="{{.}}" {{if eq $.Query.Source .}}selected{{end}}>
+                  {{if .}}{{.}}{{else}}全部{{end}}
+                </option>
+                {{end}}
+              </select>
+            </label>
+            <label
+              >搜索
+              <input
+                type="search"
+                name="q"
+                value="{{.Query.Search}}"
+                placeholder="会话、正文、标题"
+              />
+            </label>
+          </div>
+          <div class="filter-actions">
+            <button type="submit">筛选</button>
+            <a href="/messages" role="button" class="secondary">清空</a>
+            <a href="{{.APIURL}}" role="button" class="contrast">查看 JSON</a>
+          </div>
+        </form>
+      </section>
+
+      {{if .Messages}}
+      <section class="message-list" aria-label="消息列表">
+        {{range .Messages}}
+        <article class="message-card">
+          <header>
+            <div>
+              <h3 class="message-title">
+                {{if
+                .ConversationTitle}}{{.ConversationTitle}}{{else}}{{.Title}}{{end}}
+              </h3>
+              <div class="meta-row">
+                <span>#{{.ID}}</span>
+                <span>{{.Source}}</span>
+                {{if .CreatedAt}}<span>{{.CreatedAt}}</span>{{end}}
+              </div>
+            </div>
+          </header>
+
+          <div class="content-box">
+            {{if .CleanContent}}{{.CleanContent}}{{else}}{{.Content}}{{end}}
+          </div>
+
+          <div class="field-grid" aria-label="抽取字段">
+            {{if
+            .ConversationTitle}}<span>会话：{{.ConversationTitle}}</span>{{end}}
+            {{if .Title}}<span>原始标题：{{.Title}}</span>{{end}} {{if
+            .SenderName}}<span>发送方名称：{{.SenderName}}</span>{{end}} {{if
+            .Device}}<span>设备：{{.Device}}</span>{{end}} {{if
+            .ReceiveTime}}<span>接收时间：{{.ReceiveTime}}</span>{{end}}
+          </div>
+        </article>
+        {{end}}
+      </section>
+      {{else}}
+      <section class="empty-state">
+        <h2>没有符合条件的消息</h2>
+        <p>尝试放宽来源或关键词筛选。</p>
+      </section>
+      {{end}}
+    </main>
+  </body>
+</html>
+{{end}}
